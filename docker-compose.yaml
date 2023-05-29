@@ -1,0 +1,18 @@
+version: '3'
+
+services:
+  fullcycle.go-expert.sqlite:
+    image: nouchka/sqlite3:latest
+    container_name: fullcycle.go-expert.sqlite
+    stdin_open: true
+    tty: true
+    restart: on-failure
+    volumes:
+      - ./db/init.sql:/root/db/init.sql
+      - ./db/db.sqlite3:/root/db/db.sqlite3
+      - ./db/db-entrypoint.sh:/root/db/db-entrypoint.sh
+    entrypoint:
+      ["bash", "db-entrypoint.sh"]
+    ports:
+      - '9000:9000'
+    restart: unless-stopped
