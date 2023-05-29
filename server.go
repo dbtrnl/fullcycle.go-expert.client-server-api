@@ -35,10 +35,6 @@ func main() {
 }
 
 func initDbConnection() (*sql.DB, error) {
-	/* 
-		db, err := sql.Open("sqlite", "root:root@tcp(localhost:9000)/root/db/db.sqlite3")
-		Using docker host always results in this error: "unable to open database file: out of memory (14)"
-	*/
 	db, err := sql.Open("sqlite", "./db/db.sqlite3")
 	if err != nil { return nil, err }
 	return db, nil
@@ -83,21 +79,9 @@ func saveCotacao(db *sql.DB, c EconomiaAwesomeAPICotacaoObject) error {
 	stmt, err := db.Prepare(query)
 	if err != nil { return err }
 	defer stmt.Close()
-	
+
 	res, err := stmt.Exec(nil, c.Code, c.Codein, c.Name, c.High, c.Low, c.VarBid, c.PctChange, c.Bid, c.Ask, c.Timestamp, c.Create_date)
 	if err != nil { return err }
 	fmt.Println(res.LastInsertId())
 	return nil
 }
-
-/* Not used since test table was removed
-func testDbConnection(db *sql.DB) error {
-	query, err := db.Query("SELECT * FROM test;")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error while querying database: %v\n", err)
-		return err
-	}
-	println(query)
-	return nil
-}
-*/
