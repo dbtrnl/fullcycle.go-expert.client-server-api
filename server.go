@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -37,35 +39,47 @@ func main() {
 func initDbConnection() (*sql.DB, error) {
 	db, err := sql.Open("sqlite", "./db/db.sqlite3")
 	if err != nil { return nil, err }
+
+	err = pingDbConnection(db)
+	if err != nil { fmt.Fprintf(os.Stderr, "Error while pinging DB connection: %v\n", err); panic(err) }
 	return db, nil
 }
 
 func getCotacaoHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("-----\ngetCotacaoHandler initiating...")
+	defer fmt.Println("getCotacaoHandler finished.")
+	
 	var resJson EconomiaAwesomeAPICotacaoUSDBRLResponse
 	var url = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
 
-	req, err := http.Get(url)
-	if err != nil { fmt.Fprintf(os.Stderr, "Error while doing http.Get(): %v\n", err); panic(err) }
-	defer req.Body.Close()
+	var getCotacaoTimeout = 200 * time.Millisecond
+	httpCtx, cancelHttpCtx := context.WithTimeout(context.Background(), getCotacaoTimeout)
+	defer cancelHttpCtx()
 
-	res, err := ioutil.ReadAll(req.Body)
+	req, err := http.NewRequestWithContext(httpCtx, "GET", url, nil)
+	if err != nil { fmt.Fprintf(os.Stderr, "Error while creating NewRequestWithContext(): %v\n", err); panic(err) }
+	
+	res, err := http.DefaultClient.Do(req)
+	if err != nil { fmt.Fprintf(os.Stderr, "Error while doing http.DefaultClient.Do(): %v\n", err); panic(err) }
+	defer res.Body.Close()
+	fmt.Printf("Get request to %s sucessful.\n", url)
+
+	body, err := ioutil.ReadAll(res.Body)
 	if err != nil { fmt.Fprintf(os.Stderr, "Error while doing ioutil.ReadAll(): %v\n", err); panic(err) }
+
+	err = json.Unmarshal(body, &resJson)
+	if err != nil { fmt.Fprintf(os.Stderr, "Error while Unmarshalling JSON response: %v\n", err); panic(err) }
 
 	dbConnection, err := initDbConnection()
 	if err != nil { fmt.Fprintf(os.Stderr, "Error while initializing database connection: %v\n", err); panic(err) }
 	defer dbConnection.Close()
 
-	err = pingDbConnection(dbConnection)
-	if err != nil { fmt.Fprintf(os.Stderr, "Error while pinging DB connection: %v\n", err); panic(err) }
-	
-	err = json.Unmarshal(res, &resJson)
-	if err != nil { fmt.Fprintf(os.Stderr, "Error while Unmarshalling JSON response: %v\n", err); panic(err) }
-
 	err = saveCotacao(dbConnection, resJson.Usdbrl)
 	if err != nil { fmt.Fprintf(os.Stderr, "Error while saving JSON response to Database: %v\n", err); panic(err) }
+	fmt.Println("Data sucessfully written to database.")
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(res))
+	w.Write([]byte(resJson.Usdbrl.Bid))
 }
 
 func pingDbConnection(db *sql.DB) error {
@@ -75,13 +89,16 @@ func pingDbConnection(db *sql.DB) error {
 }
 
 func saveCotacao(db *sql.DB, c EconomiaAwesomeAPICotacaoObject) error {
+	var saveCotacaoTimeout = 10 * time.Millisecond
+	ctx, cancelCtx := context.WithTimeout(context.Background(), saveCotacaoTimeout)
+	defer cancelCtx()
+	
 	var query = "INSERT INTO COTACAO_USD_BRL(id, code, codein, name, high, low, var_bid, pct_change, bid, ask, timestamp, create_date) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)"
-	stmt, err := db.Prepare(query)
+	stmt, err := db.PrepareContext(ctx, query)
 	if err != nil { return err }
 	defer stmt.Close()
 
-	res, err := stmt.Exec(nil, c.Code, c.Codein, c.Name, c.High, c.Low, c.VarBid, c.PctChange, c.Bid, c.Ask, c.Timestamp, c.Create_date)
+	_, err = stmt.ExecContext(ctx, nil, c.Code, c.Codein, c.Name, c.High, c.Low, c.VarBid, c.PctChange, c.Bid, c.Ask, c.Timestamp, c.Create_date)
 	if err != nil { return err }
-	fmt.Println(res.LastInsertId())
 	return nil
 }
