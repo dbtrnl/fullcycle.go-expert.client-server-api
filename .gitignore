@@ -3,4 +3,4 @@ Dockerfile
 db/db-entrypoint.sh
 db/init.sql
 docker-compose.yaml
-cotacao.txt
+*.txt

@@ -37,7 +37,7 @@ func main() {
 }
 
 func initDbConnection() (*sql.DB, error) {
-	db, err := sql.Open("sqlite", "../db/db.sqlite3")
+	db, err := sql.Open("sqlite", "./db/db.sqlite3")
 	if err != nil { return nil, err }
 
 	err = pingDbConnection(db)
